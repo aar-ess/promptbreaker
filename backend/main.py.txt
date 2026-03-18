@@ -1,0 +1,7 @@
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"status": "PromptBreaker online", "version": "1.0"}
