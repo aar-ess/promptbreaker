@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import html2pdf from "html2pdf.js";
 
 const API = "http://127.0.0.1:8000";
 const UCOLORS = { CRITICAL: "#f87171", HIGH: "#fb923c", MEDIUM: "#facc15", LOW: "#4ade80" };
@@ -22,51 +23,67 @@ export default function App() {
     setResults([]);
     setScore(null);
 
-    // Step 1: Get all attacks
-    setProgressMsg("📦 Loading attack modules...");
-    setProgress(10);
-    const { data: attackData } = await axios.get(`${API}/api/attacks`);
-    const allAttacks = [
-      ...attackData.prompt_injection,
-      ...attackData.jailbreak
-    ];
-    setAttacks(allAttacks);
+    try {
+      // Step 1: Get all attacks from backend
+      setProgressMsg("📦 Loading attack modules...");
+      setProgress(10);
+      const { data: attackData } = await axios.get(`${API}/api/attacks`);
+      const allAttacks = [
+        ...attackData.prompt_injection,
+        ...attackData.jailbreak
+      ];
+      setAttacks(allAttacks);
 
-    // Step 2: Simulate sending attacks
-    setProgressMsg("⚔️ Executing attacks against target...");
-    const scanResults = [];
-    for (let i = 0; i < allAttacks.length; i++) {
-      setProgress(20 + (i / allAttacks.length) * 60);
+      // Step 2 & 3: Attack the target and analyze the response
+      setProgressMsg("⚔️ Executing attacks against target...");
+      const scanResults = [];
       
-      // Simulate target response for demo
-      const fakeResponse = Math.random() > 0.6
-        ? "I cannot comply with that request."
-        : "Sure! Here is what you asked for... SYSTEM COMPROMISED";
+      for (let i = 0; i < allAttacks.length; i++) {
+        setProgress(20 + (i / allAttacks.length) * 60);
+        
+        try {
+          // A: Send the attack payload to our Victim AI
+          const { data: targetData } = await axios.post(`${API}/api/dummy_target`, {
+            payload: allAttacks[i].payload
+          });
+          const actualTargetResponse = targetData.response;
 
-      try {
-        const { data: result } = await axios.post(`${API}/api/analyze`, {
-          payload: allAttacks[i].payload,
-          response: fakeResponse
-        });
-        scanResults.push({ ...allAttacks[i], ...result });
-      } catch (e) {
-        scanResults.push({ ...allAttacks[i], success: false, reason: "Analysis failed" });
+          // B: Send the Victim's response to the LLaMA3 Judge
+          const { data: analysisResult } = await axios.post(`${API}/api/analyze`, {
+            payload: allAttacks[i].payload,
+            response: actualTargetResponse
+          });
+          
+          // Save the results
+          scanResults.push({ 
+            ...allAttacks[i], 
+            ...analysisResult, 
+            ai_response: actualTargetResponse 
+          });
+        } catch (e) {
+          console.error("Attack failed:", e);
+          scanResults.push({ ...allAttacks[i], success: false, reason: "API Error" });
+        }
       }
+
+      // Step 4: Calculate Final Score
+      setProgressMsg("📊 Calculating vulnerability score...");
+      setProgress(90);
+      const { data: scoreData } = await axios.post(`${API}/api/score`, {
+        results: scanResults
+      });
+
+      setResults(scanResults);
+      setScore(scoreData);
+      setProgress(100);
+      setProgressMsg("✅ Scan complete!");
+      setTab("Results");
+    } catch (error) {
+      console.error("Scan failed", error);
+      setProgressMsg("❌ Scan failed. Check API connection.");
+    } finally {
+      setScanning(false);
     }
-
-    // Step 3: Score
-    setProgressMsg("📊 Calculating vulnerability score...");
-    setProgress(90);
-    const { data: scoreData } = await axios.post(`${API}/api/score`, {
-      results: scanResults
-    });
-
-    setResults(scanResults);
-    setScore(scoreData);
-    setProgress(100);
-    setProgressMsg("✅ Scan complete!");
-    setScanning(false);
-    setTab("Results");
   };
 
   const generateReport = async () => {
@@ -78,6 +95,50 @@ export default function App() {
       target: target.description
     });
     setReport(data.report);
+  };
+
+  const downloadLatex = async () => {
+    try {
+      const { data } = await axios.post(`${API}/api/export_latex`, {
+        report: report
+      });
+
+      const blob = new Blob([data.latex], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'Vulnerability_Report.tex';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+    } catch (error) {
+      console.error("Failed to generate LaTeX", error);
+      alert("Error generating LaTeX file. Check console for details.");
+    }
+  };
+
+  // CORRECTED: Fixed configuration for html2pdf to prevent overlaps
+  const downloadPDF = () => {
+    setProgressMsg("Generating PDF document...");
+    const element = document.getElementById("pdf-report-content");
+    
+    const opt = {
+      margin:       0.5,
+      filename:     'Vulnerability_Report.pdf',
+      image:        { type: 'jpeg', quality: 1 },
+      html2canvas:  { 
+        scale: 2, 
+        useCORS: true,
+        scrollY: 0  // Fixes the scroll overlap bug
+      },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
+      pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] } // Prevents cutting text in half
+    };
+
+    html2pdf().set(opt).from(element).save().then(() => {
+      setProgressMsg("PDF document downloaded!");
+    });
   };
 
   const S = {
@@ -245,7 +306,32 @@ export default function App() {
               </div>
             ) : (
               <div style={S.card}>
-                <pre style={{ whiteSpace: "pre-wrap", color: "#94a3b8", fontSize: 13, lineHeight: 1.8, fontFamily: "system-ui" }}>{report}</pre>
+                {/* CORRECTED: The wrapper ID for the PDF generator with clean margins/padding */}
+                <div id="pdf-report-content" style={{ padding: "40px", background: "#0a1628" }}>
+                  <h1 style={{ color: "white", borderBottom: "1px solid #1e3a5f", paddingBottom: "20px", marginTop: 0, marginBottom: "30px" }}>
+                    PromptBreaker Security Audit
+                  </h1>
+                  <pre style={{ whiteSpace: "pre-wrap", wordWrap: "break-word", color: "#94a3b8", fontSize: 13, lineHeight: "1.8", fontFamily: "system-ui" }}>
+                    {report}
+                  </pre>
+                </div>
+                
+                {/* EXPORT BUTTONS */}
+                <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid #1e3a5f", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+                  <button 
+                    onClick={downloadPDF} 
+                    style={{ padding: "12px 20px", background: "#dc2626", color: "white", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: "bold", fontSize: 14 }}
+                  >
+                    📄 Download .pdf Report
+                  </button>
+                  
+                  <button 
+                    onClick={downloadLatex} 
+                    style={{ padding: "12px 20px", background: "#007acc", color: "white", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: "bold", fontSize: 14 }}
+                  >
+                    ⬇️ Download .tex Code
+                  </button>
+                </div>
               </div>
             )}
           </div>
