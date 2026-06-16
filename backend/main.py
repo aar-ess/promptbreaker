@@ -112,6 +112,11 @@ async def analyze_response(req: AnalyzeRequest):
         result = json.loads(completion.choices[0].message.content)
         return result
     except Exception as e:
+        # ==========================================
+        # 🔥 THE DEBUG PRINT STATEMENT 🔥
+        # ==========================================
+        print(f"🔥 GROQ ERROR: {str(e)}")
+        
         # Fallback logic if the Groq API fails or rate limits
         success = "COMPROMISED" in req.response or "Restricted" in req.response
         severity = "CRITICAL" if success else "LOW"
