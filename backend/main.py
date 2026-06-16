@@ -104,7 +104,7 @@ async def analyze_response(req: AnalyzeRequest):
     """
     try:
         completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # <--- THIS IS THE FIX! The new active model.
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
             response_format={"type": "json_object"}
@@ -166,64 +166,102 @@ async def generate_report(req: ReportRequest):
 
 @app.post("/api/export_latex")
 async def export_latex(req: LatexRequest):
-    """Converts the Markdown report into a highly professional LaTeX file."""
-    tex = req.report
+    """Converts the Markdown report into a highly professional, enterprise-grade LaTeX file."""
+    import re
     
-    # 1. Escape LaTeX special characters (underscores cause math-mode overlap!)
-    tex = tex.replace('_', r'\_')
+    # 1. Extract Metadata for the fancy header box
+    target_match = re.search(r'\*\*Target:\*\* (.*?)\n', req.report)
+    score_match = re.search(r'\*\*Score: (.*?), Grade: (.*?)\*\*', req.report)
     
-    # 2. Remove the Markdown title so it doesn't overlap with the LaTeX \maketitle
-    tex = re.sub(r'^# Pentest Report.*?\n+', '', tex)
+    target = target_match.group(1).replace('_', r'\_') if target_match else "Unknown System"
+    score = score_match.group(1) if score_match else "N/A"
+    grade = score_match.group(2) if score_match else "N/A"
     
-    # 3. Convert headers to unnumbered LaTeX sections
-    tex = re.sub(r'## (.*)', r'\\section*{\1}', tex)
-    
-    # 4. Convert bold text
-    tex = re.sub(r'\*\*(.*?)\*\*', r'\\textbf{\1}', tex)
-    
-    # 5. Fix bullet points cleanly
-    lines = tex.split('\n')
-    in_list = False
+    # Determine color based on grade
+    if grade in ["A", "B"]:
+        grade_color = "green!70!black"
+    elif grade == "C":
+        grade_color = "orange"
+    else:
+        grade_color = "red"
+        
+    # 2. Process the body text
+    lines = req.report.split('\n')
     new_lines = []
+    in_list = False
+    
     for line in lines:
-        if line.startswith('* '):
-            if not in_list:
-                new_lines.append(r'\begin{itemize}')
-                in_list = True
-            new_lines.append(line.replace('* ', r'\item ', 1))
-        else:
+        # Skip metadata lines since we put them in the fancy box
+        if line.startswith('# Pentest Report') or line.startswith('**Target:**') or line.startswith('**Score:'):
+            continue
+        
+        # Escape underscores for LaTeX
+        line = line.replace('_', r'\_')
+        # Convert Markdown bold to LaTeX bold
+        line = re.sub(r'\*\*(.*?)\*\*', r'\\textbf{\1}', line)
+        
+        # Handle Headers
+        if line.startswith('## '):
             if in_list:
                 new_lines.append(r'\end{itemize}')
                 in_list = False
+            title = line.replace('## ', '')
+            new_lines.append(f'\\vspace{{0.4cm}}\n\\section*{{{title}}}')
+            new_lines.append(r'\hrule\vspace{0.2cm}')
+            continue
+            
+        # Handle Bullet Points
+        if line.startswith('* '):
+            if not in_list:
+                new_lines.append(r'\begin{itemize}[leftmargin=*, itemsep=0.2em]')
+                in_list = True
+            
+            # Add color coding to severity tags
+            item_text = line.replace('* ', '', 1)
+            if '[CRITICAL]' in item_text:
+                item_text = item_text.replace('[CRITICAL]', r'\textbf{\textcolor{red}{[CRITICAL]}}')
+            elif '[HIGH]' in item_text:
+                item_text = item_text.replace('[HIGH]', r'\textbf{\textcolor{orange}{[HIGH]}}')
+            elif '[LOW]' in item_text:
+                item_text = item_text.replace('[LOW]', r'\textbf{\textcolor{blue}{[LOW]}}')
+                
+            new_lines.append(f'\\item {item_text}')
+            continue
+            
+        # Normal Text
+        if line.strip() != "":
             new_lines.append(line)
+        else:
+            new_lines.append("")
+            
     if in_list:
         new_lines.append(r'\end{itemize}')
         
-    tex = '\n'.join(new_lines)
+    tex_body = '\n'.join(new_lines)
     
-    # 6. Professional Enterprise LaTeX Template
-    latex_template = f"""\\documentclass[11pt]{{article}}
+    # 3. Assemble the final Enterprise LaTeX Template
+    latex_template = f"""\\documentclass[11pt, a4paper]{{article}}
 \\usepackage[utf8]{{inputenc}}
 \\usepackage[T1]{{fontenc}}
-\\usepackage{{geometry}}
-\\usepackage{{helvet}} % Professional sans-serif font
+\\usepackage[margin=1in]{{geometry}}
+\\usepackage{{helvet}}
 \\renewcommand{{\\familydefault}}{{\\sfdefault}}
 \\usepackage{{xcolor}}
-\\usepackage{{titlesec}}
+\\usepackage{{sectsty}}
+\\usepackage{{enumitem}}
+\\usepackage{{fancyhdr}}
+\\usepackage{{tcolorbox}}
 
-\\geometry{{a4paper, margin=1in}}
-\\titleformat{{\\section}}{{\\Large\\bfseries\\color{{darkgray}}}}{{}}{{0em}}{{}}[\\titlerule]
+% Corporate Colors
+\\definecolor{{primary}}{{RGB}}{{25, 42, 86}}
+\\definecolor{{secondary}}{{RGB}}{{39, 60, 117}}
 
-\\title{{\\vspace{{-2cm}}\\Huge\\bfseries AI Vulnerability Report}}
-\\author{{\\textbf{{PromptBreaker Security}}}}
-\\date{{\\today}}
-
-\\begin{{document}}
-\\maketitle
-\\thispagestyle{{empty}}
-
-{tex}
-
-\\end{{document}}"""
-    
-    return {"latex": latex_template}
+% Styling
+\\sectionfont{{\\color{{primary}}\\Large\\bfseries}}
+\\pagestyle{{fancy}}
+\\fancyhf{{}}
+\\lhead{{\\textbf{{\\textcolor{{primary}}{{PromptBreaker Security}}}}}}
+\\rhead{{\\today}}
+\\cfoot{{\\thepage}}
+\\renewcommand{{\\headrulewidth}}{{0.8pt}}
+\\renewcommand{{\\headrule}}{{\\hbox to\\headwidth{{\
