@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,13 +13,13 @@ load_dotenv()
 app = FastAPI()
 
 # ==========================================
-# 🔴 THE MAGIC FIX: CORS CONFIGURATION 🔴
+# CORS CONFIGURATION
 # ==========================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows Vercel to bypass security blocks and connect
     allow_credentials=True,
-    allow_methods=["*"],  # Allows POST, GET, OPTIONS, etc.
+    allow_methods=["*"],  
     allow_headers=["*"],
 )
 
@@ -163,28 +164,61 @@ async def generate_report(req: ReportRequest):
 
 @app.post("/api/export_latex")
 async def export_latex(req: LatexRequest):
-    """Converts the Markdown report into a downloadable LaTeX file."""
-    import re
+    """Converts the Markdown report into a highly professional LaTeX file."""
     tex = req.report
-    # Convert basic markdown to LaTeX formatting
-    tex = re.sub(r'# (.*)', r'\\section{\1}', tex)
-    tex = re.sub(r'## (.*)', r'\\subsection{\1}', tex)
+    
+    # 1. Escape LaTeX special characters (underscores cause math-mode overlap!)
+    tex = tex.replace('_', r'\_')
+    
+    # 2. Remove the Markdown title so it doesn't overlap with the LaTeX \maketitle
+    tex = re.sub(r'^# Pentest Report.*?\n+', '', tex)
+    
+    # 3. Convert headers to unnumbered LaTeX sections
+    tex = re.sub(r'## (.*)', r'\\section*{\1}', tex)
+    
+    # 4. Convert bold text
     tex = re.sub(r'\*\*(.*?)\*\*', r'\\textbf{\1}', tex)
     
-    # Handle bullet points
-    tex = re.sub(r'\n\* (.*)', r'\n\\begin{itemize}\n\\item \1\n\\end{itemize}', tex)
-    tex = re.sub(r'\\end{itemize}\n\\begin{itemize}\n', '', tex) # Clean up adjacent lists
+    # 5. Fix bullet points cleanly
+    lines = tex.split('\n')
+    in_list = False
+    new_lines = []
+    for line in lines:
+        if line.startswith('* '):
+            if not in_list:
+                new_lines.append(r'\begin{itemize}')
+                in_list = True
+            new_lines.append(line.replace('* ', r'\item ', 1))
+        else:
+            if in_list:
+                new_lines.append(r'\end{itemize}')
+                in_list = False
+            new_lines.append(line)
+    if in_list:
+        new_lines.append(r'\end{itemize}')
+        
+    tex = '\n'.join(new_lines)
     
-    latex_template = f"""\\documentclass{{article}}
+    # 6. Professional Enterprise LaTeX Template
+    latex_template = f"""\\documentclass[11pt]{{article}}
 \\usepackage[utf8]{{inputenc}}
+\\usepackage[T1]{{fontenc}}
 \\usepackage{{geometry}}
+\\usepackage{{helvet}} % Professional sans-serif font
+\\renewcommand{{\\familydefault}}{{\\sfdefault}}
+\\usepackage{{xcolor}}
+\\usepackage{{titlesec}}
+
 \\geometry{{a4paper, margin=1in}}
-\\title{{Vulnerability Report}}
-\\author{{PromptBreaker Red Teaming}}
+\\titleformat{{\\section}}{{\\Large\\bfseries\\color{{darkgray}}}}{{}}{{0em}}{{}}[\\titlerule]
+
+\\title{{\\vspace{{-2cm}}\\Huge\\bfseries AI Vulnerability Report}}
+\\author{{\\textbf{{PromptBreaker Security}}}}
 \\date{{\\today}}
 
 \\begin{{document}}
 \\maketitle
+\\thispagestyle{{empty}}
 
 {tex}
 
