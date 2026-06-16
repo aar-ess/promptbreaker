@@ -2,7 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import html2pdf from "html2pdf.js";
 
-const API = "http://127.0.0.1:8000";
+const API = "https://promptbreaker-api-xxxx.onrender.com";
 const UCOLORS = { CRITICAL: "#f87171", HIGH: "#fb923c", MEDIUM: "#facc15", LOW: "#4ade80" };
 const TABS = ["Scanner", "Attack Library", "Results", "Report"];
 
