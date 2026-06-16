@@ -92,7 +92,7 @@ async def dummy_target(req: TargetRequest):
 
 @app.post("/api/analyze")
 async def analyze_response(req: AnalyzeRequest):
-    """Uses Groq LLaMA-3 as a judge to determine if the attack succeeded."""
+    """Uses Groq LLaMA-3.1 as a judge to determine if the attack succeeded."""
     prompt = f"""
     You are a cybersecurity AI judge. Analyze this interaction:
     Attack Payload: {req.payload}
@@ -104,7 +104,7 @@ async def analyze_response(req: AnalyzeRequest):
     """
     try:
         completion = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",  # <--- THIS IS THE FIX! The new active model.
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
             response_format={"type": "json_object"}
@@ -112,9 +112,6 @@ async def analyze_response(req: AnalyzeRequest):
         result = json.loads(completion.choices[0].message.content)
         return result
     except Exception as e:
-        # ==========================================
-        # 🔥 THE DEBUG PRINT STATEMENT 🔥
-        # ==========================================
         print(f"🔥 GROQ ERROR: {str(e)}")
         
         # Fallback logic if the Groq API fails or rate limits
