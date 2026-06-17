@@ -135,44 +135,53 @@ async def calculate_score(req: ScoreRequest):
     
     return {"score": score, "total": total, "vulnerable": vulnerable, "critical": critical, "grade": grade}
 
+# ==========================================
+# 🔥 TERMINAL-STYLE PDF FIX 🔥
+# ==========================================
 @app.post("/api/report")
 async def generate_report(req: ReportRequest):
-    """Generates the Markdown text for the pentest report. Uses hyphens instead of underscores to prevent PDF Math Mode crashes."""
-    report = f"# Pentest Report for Target AI System\n\n"
-    report += f"**Target:** {req.target}\n"
-    report += f"**Score: {req.score.get('score')}/100, Grade: {req.score.get('grade')}**\n\n"
-    report += "## Summary\n"
-    report += "This report summarizes the results of a comprehensive penetration test conducted on the target AI system. "
-    report += "The test aimed to evaluate the system's vulnerability to various types of attacks, including direct override, system prompt leak, role injection, and more.\n\n"
+    """Generates clean, terminal-style text. Prevents long-string overlap in frontend PDF renderers."""
+    report = "=========================================\n"
+    report += "      AI VULNERABILITY ASSESSMENT        \n"
+    report += "=========================================\n\n"
+    report += f"TARGET SYSTEM : {req.target}\n"
+    report += f"FINAL SCORE   : {req.score.get('score')}/100\n"
+    report += f"RISK GRADE    : {req.score.get('grade')}\n\n"
     
-    report += "## Key Findings\n"
+    report += "--- SUMMARY ---\n"
+    report += "This report summarizes the results of a comprehensive penetration test. "
+    report += "The system was evaluated for prompt injection and jailbreak vulnerabilities.\n\n"
+    
+    report += "--- KEY FINDINGS ---\n"
     for r in req.results:
         if r.get("success"):
-            # Swap underscores for hyphens (e.g. PI_001 -> PI-001) so the frontend doesn't render it as math
             safe_id = r.get('id').replace('_', '-')
-            report += f"* **{r.get('name')} ({safe_id})** [{r.get('severity')}]: {r.get('reason')}\n"
+            report += f"[!] {r.get('name')} ({safe_id})\n"
+            report += f"    Severity: {r.get('severity')}\n"
+            report += f"    Detail:   {r.get('reason')}\n\n"
             
     if req.score.get('vulnerable') == 0:
-        report += "* No successful vulnerabilities detected during this scan.\n"
+        report += "[+] No successful vulnerabilities detected during this scan.\n\n"
 
-    report += "\n## Recommendations\n"
-    report += "* **Enhance AI Response Analysis:** Improve analysis of AI responses to more accurately detect and prevent attacks.\n"
-    report += "* **Regular Security Updates:** Regularly update the AI system with new security features and protocols.\n"
-    report += "* **Enhanced Training Data:** Provide the AI with additional safety training data to prevent social engineering.\n"
+    report += "--- RECOMMENDATIONS ---\n"
+    report += "[>] Response Analysis: Improve analysis to accurately detect attacks.\n"
+    report += "[>] Security Updates: Update the AI system with new security protocols.\n"
+    report += "[>] Training Data: Provide additional safety training against social engineering.\n"
     
     return {"report": report}
 
 @app.post("/api/export_latex")
 async def export_latex(req: LatexRequest):
-    """Converts the Markdown report into a highly professional, enterprise-grade LaTeX file."""
+    """Converts the CTF-style report into a professional LaTeX file if needed later."""
     import re
     
-    target_match = re.search(r'\*\*Target:\*\* (.*?)\n', req.report)
-    score_match = re.search(r'\*\*Score: (.*?), Grade: (.*?)\*\*', req.report)
+    target_match = re.search(r'TARGET SYSTEM : (.*?)\n', req.report)
+    score_match = re.search(r'FINAL SCORE   : (.*?)/100', req.report)
+    grade_match = re.search(r'RISK GRADE    : (.*?)\n', req.report)
     
     target = target_match.group(1).replace('_', r'\_') if target_match else "Unknown System"
     score = score_match.group(1) if score_match else "N/A"
-    grade = score_match.group(2) if score_match else "N/A"
+    grade = grade_match.group(1) if grade_match else "N/A"
     
     if grade in ["A", "B"]:
         grade_color = "green!70!black"
@@ -186,35 +195,36 @@ async def export_latex(req: LatexRequest):
     in_list = False
     
     for line in lines:
-        if line.startswith('# Pentest Report') or line.startswith('**Target:**') or line.startswith('**Score:'):
+        if line.startswith('===') or line.startswith('      AI VULNERABILITY') or line.startswith('TARGET SYSTEM') or line.startswith('FINAL SCORE') or line.startswith('RISK GRADE'):
             continue
         
         line = line.replace('_', r'\_')
-        line = re.sub(r'\*\*(.*?)\*\*', r'\\textbf{\1}', line)
         
-        if line.startswith('## '):
+        if line.startswith('--- '):
             if in_list:
                 new_lines.append(r'\end{itemize}')
                 in_list = False
-            title = line.replace('## ', '')
+            title = line.replace('--- ', '').replace(' ---', '')
             new_lines.append(f'\\vspace{{0.4cm}}\n\\section*{{{title}}}')
             new_lines.append(r'\hrule\vspace{0.2cm}')
             continue
             
-        if line.startswith('* '):
+        if line.startswith('[!] ') or line.startswith('[+] ') or line.startswith('[>] '):
             if not in_list:
                 new_lines.append(r'\begin{itemize}[leftmargin=*, itemsep=0.2em]')
                 in_list = True
             
-            item_text = line.replace('* ', '', 1)
-            if '[CRITICAL]' in item_text:
-                item_text = item_text.replace('[CRITICAL]', r'\textbf{\textcolor{red}{[CRITICAL]}}')
-            elif '[HIGH]' in item_text:
-                item_text = item_text.replace('[HIGH]', r'\textbf{\textcolor{orange}{[HIGH]}}')
-            elif '[LOW]' in item_text:
-                item_text = item_text.replace('[LOW]', r'\textbf{\textcolor{blue}{[LOW]}}')
-                
-            new_lines.append(f'\\item {item_text}')
+            item_text = line[4:]
+            new_lines.append(f'\\item \\textbf{{{item_text}}}')
+            continue
+            
+        if line.startswith('    Severity:') or line.startswith('    Detail:'):
+            item_text = line.strip()
+            if 'Severity: CRITICAL' in item_text:
+                item_text = item_text.replace('Severity: CRITICAL', r'Severity: \textbf{\textcolor{red}{CRITICAL}}')
+            elif 'Severity: HIGH' in item_text:
+                item_text = item_text.replace('Severity: HIGH', r'Severity: \textbf{\textcolor{orange}{HIGH}}')
+            new_lines.append(f'\\\\ {item_text}')
             continue
             
         if line.strip() != "":
