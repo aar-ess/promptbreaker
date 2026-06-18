@@ -345,7 +345,7 @@ export default function App() {
       </div>
 
       {/* ── CONTENT ── */}
-      <main style={{ padding: "36px 32px", maxWidth: 1080, margin: "0 auto" }}>
+      <main style={{ padding: "36px 48px" }}>
 
         {/* ════ SCANNER TAB ════ */}
         {tab === "Scanner" && (
