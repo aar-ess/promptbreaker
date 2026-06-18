@@ -300,10 +300,10 @@ export default function App() {
   const gradeColor = { A: "#22c55e", B: "#84cc16", C: "#eab308", D: "#f97316", F: "#ef4444" };
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'Inter', system-ui, sans-serif", width: "100%", overflowX: "hidden" }}>
 
       {/* ── HEADER ── */}
-      <header style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 32px", height: 60, display: "flex", alignItems: "center", gap: 14, position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(12px)" }}>
+      <header style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 48px", height: 60, display: "flex", alignItems: "center", gap: 14, position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(12px)", width: "100%", boxSizing: "border-box" }}>
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 30, height: 30, borderRadius: 7, background: "linear-gradient(135deg, #dc2626, #7f1d1d)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>⬡</div>
@@ -332,7 +332,7 @@ export default function App() {
       </header>
 
       {/* ── TABS ── */}
-      <div style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 32px", display: "flex" }}>
+      <div style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 48px", display: "flex", width: "100%", boxSizing: "border-box" }}>
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: "13px 18px", cursor: "pointer", border: "none", background: "none",
