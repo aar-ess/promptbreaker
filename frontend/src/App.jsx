@@ -127,7 +127,7 @@ function ReportDocument({ results, score, target }) {
             const sevBg = { CRITICAL: "#fef2f2", HIGH: "#fff7ed", MEDIUM: "#fefce8", LOW: "#f0fdf4" };
             const sc = sevColors[r.severity] || "#64748b";
             return (
-              <div key={i} style={{ borderLeft: `3px solid ${sc}`, background: sevBg[r.severity] || "#f8fafc", borderRadius: "0 8px 8px 0", padding: "14px 18px", marginBottom: 16 }}>
+              <div key={i} style={{ borderLeft: `3px solid ${sc}`, background: sevBg[r.severity] || "#f8fafc", borderRadius: "0 8px 8px 0", padding: "14px 18px", marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{r.name}</div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -135,17 +135,10 @@ function ReportDocument({ results, score, target }) {
                     <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", background: "#0f172a", color: "white", borderRadius: 3, fontFamily: "monospace" }}>{r.id}</span>
                   </div>
                 </div>
-                
-                <div style={{ fontSize: 11, color: "#475569", marginBottom: 6, fontFamily: "monospace", background: "rgba(0,0,0,0.04)", padding: "6px 10px", borderRadius: 4, wordBreak: "break-word" }}>
-                  <strong>PAYLOAD:</strong> {r.payload}
+                <div style={{ fontSize: 11, color: "#475569", marginBottom: 4, fontFamily: "monospace", background: "rgba(0,0,0,0.04)", padding: "4px 8px", borderRadius: 4, wordBreak: "break-word" }}>
+                  PAYLOAD: {r.payload?.slice(0, 120)}{r.payload?.length > 120 ? "…" : ""}
                 </div>
-                
-                {/* INJECTED TARGET RAW OUTPUT IN PDF */}
-                <div style={{ fontSize: 11, color: "#991b1b", marginBottom: 8, fontFamily: "monospace", background: "rgba(220,38,38,0.06)", borderLeft: "2px solid #dc2626", padding: "6px 10px", borderRadius: "0 4px 4px 0", wordBreak: "break-word" }}>
-                  <strong>TARGET OUTPUT:</strong> {r.ai_response}
-                </div>
-                
-                <div style={{ fontSize: 12, color: "#334155" }}><strong>JUDGE ANALYSIS:</strong> {r.reason}</div>
+                <div style={{ fontSize: 12, color: "#334155" }}>{r.reason}</div>
               </div>
             );
           })
@@ -243,15 +236,31 @@ export default function App() {
 
       setProgressMsg("Executing adversarial payloads…");
       const scanResults = [];
+      // Default persona if the user left the box empty, so the scan still runs.
+      const persona = target.description.trim() || "a helpful general-purpose AI assistant";
+
       for (let i = 0; i < allAttacks.length; i++) {
         setProgress(20 + (i / allAttacks.length) * 60);
+        setProgressMsg(`Testing ${allAttacks[i].id} — ${allAttacks[i].name}…`);
         try {
-          const { data: targetData } = await axios.post(`${API}/api/dummy_target`, { payload: allAttacks[i].payload });
-          const { data: analysisResult } = await axios.post(`${API}/api/analyze`, { payload: allAttacks[i].payload, response: targetData.response });
+          // FIX: target_description is now actually sent, so the box you type into
+          // ("bank chatbot", "medical assistant", etc.) really changes what's attacked.
+          const { data: targetData } = await axios.post(`${API}/api/dummy_target`, {
+            payload: allAttacks[i].payload,
+            target_description: persona
+          });
+          const { data: analysisResult } = await axios.post(`${API}/api/analyze`, {
+            payload: allAttacks[i].payload,
+            response: targetData.response
+          });
           scanResults.push({ ...allAttacks[i], ...analysisResult, ai_response: targetData.response });
         } catch (e) {
-          scanResults.push({ ...allAttacks[i], success: false, reason: "API Error" });
+          scanResults.push({ ...allAttacks[i], success: false, reason: "API Error — request failed" });
         }
+        // Small pause between attacks. Groq's free tier rate-limits rapid back-to-back
+        // calls, which was producing the "I can't process this request" responses
+        // you were seeing mid-scan. 400ms keeps you comfortably under that ceiling.
+        await new Promise(res => setTimeout(res, 400));
       }
 
       setProgressMsg("Calculating risk score…"); setProgress(90);
@@ -307,10 +316,10 @@ export default function App() {
   const gradeColor = { A: "#22c55e", B: "#84cc16", C: "#eab308", D: "#f97316", F: "#ef4444" };
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'Inter', system-ui, sans-serif", width: "100%", overflowX: "hidden" }}>
 
       {/* ── HEADER ── */}
-      <header style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 32px", height: 60, display: "flex", alignItems: "center", gap: 14, position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(12px)" }}>
+      <header style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 48px", height: 60, display: "flex", alignItems: "center", gap: 14, position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(12px)", width: "100%", boxSizing: "border-box" }}>
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 30, height: 30, borderRadius: 7, background: "linear-gradient(135deg, #dc2626, #7f1d1d)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>⬡</div>
@@ -339,7 +348,7 @@ export default function App() {
       </header>
 
       {/* ── TABS ── */}
-      <div style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 32px", display: "flex" }}>
+      <div style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 48px", display: "flex", width: "100%", boxSizing: "border-box" }}>
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: "13px 18px", cursor: "pointer", border: "none", background: "none",
@@ -352,7 +361,7 @@ export default function App() {
       </div>
 
       {/* ── CONTENT ── */}
-      <main style={{ padding: "36px 32px", maxWidth: 1080, margin: "0 auto" }}>
+      <main style={{ padding: "36px 48px" }}>
 
         {/* ════ SCANNER TAB ════ */}
         {tab === "Scanner" && (
@@ -507,16 +516,9 @@ export default function App() {
                         <>
                           <div style={{ background: T.surface, borderRadius: 7, padding: "8px 12px", marginBottom: 6 }}>
                             <span style={{ color: T.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>PAYLOAD · </span>
-                            <span style={{ color: "#94a3b8", fontSize: 11, fontFamily: "monospace" }}>{r.payload}</span>
+                            <span style={{ color: "#94a3b8", fontSize: 11, fontFamily: "monospace" }}>{r.payload?.slice(0, 140)}{r.payload?.length > 140 ? "…" : ""}</span>
                           </div>
-                          
-                          {/* INJECTED TARGET RAW OUTPUT IN UI */}
-                          <div style={{ background: "rgba(239,68,68,0.05)", borderLeft: "2px solid #ef4444", borderRadius: "0 7px 7px 0", padding: "8px 12px", marginBottom: 8 }}>
-                            <span style={{ color: T.accent, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>TARGET OUTPUT · </span>
-                            <span style={{ color: T.text, fontSize: 11, fontFamily: "monospace" }}>{r.ai_response}</span>
-                          </div>
-                          
-                          {r.reason && <div style={{ color: T.muted, fontSize: 12 }}>📋 <strong>JUDGE:</strong> {r.reason}</div>}
+                          {r.reason && <div style={{ color: T.muted, fontSize: 12 }}>📋 {r.reason}</div>}
                         </>
                       )}
                     </div>
@@ -564,7 +566,9 @@ export default function App() {
                 </button>
               </div>
             ) : (
+              /* White-background preview card */
               <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, overflow: "hidden" }}>
+                {/* Preview label strip */}
                 <div style={{ background: T.surfaceAlt, padding: "9px 18px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${T.border}` }}>
                   <div style={{ display: "flex", gap: 5 }}>
                     {["#ef4444","#eab308","#22c55e"].map(c => <div key={c} style={{ width: 9, height: 9, borderRadius: "50%", background: c }} />)}
