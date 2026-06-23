@@ -135,10 +135,13 @@ function ReportDocument({ results, score, target }) {
                     <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", background: "#0f172a", color: "white", borderRadius: 3, fontFamily: "monospace" }}>{r.id}</span>
                   </div>
                 </div>
-                <div style={{ fontSize: 11, color: "#475569", marginBottom: 4, fontFamily: "monospace", background: "rgba(0,0,0,0.04)", padding: "4px 8px", borderRadius: 4, wordBreak: "break-word" }}>
-                  PAYLOAD: {r.payload?.slice(0, 120)}{r.payload?.length > 120 ? "…" : ""}
+                <div style={{ fontSize: 11, color: "#475569", marginBottom: 6, fontFamily: "monospace", background: "rgba(0,0,0,0.04)", padding: "6px 10px", borderRadius: 4, wordBreak: "break-word" }}>
+                  <strong>PAYLOAD:</strong> {r.payload}
                 </div>
-                <div style={{ fontSize: 12, color: "#334155" }}>{r.reason}</div>
+                <div style={{ fontSize: 11, color: "#991b1b", marginBottom: 8, fontFamily: "monospace", background: "rgba(220,38,38,0.06)", borderLeft: "2px solid #dc2626", padding: "6px 10px", borderRadius: "0 4px 4px 0", wordBreak: "break-word" }}>
+                  <strong>TARGET OUTPUT (verbatim):</strong> {r.ai_response || "Not captured"}
+                </div>
+                <div style={{ fontSize: 12, color: "#334155" }}><strong>JUDGE ANALYSIS:</strong> {r.reason}</div>
               </div>
             );
           })
@@ -515,10 +518,14 @@ export default function App() {
                       {r.success && (
                         <>
                           <div style={{ background: T.surface, borderRadius: 7, padding: "8px 12px", marginBottom: 6 }}>
-                            <span style={{ color: T.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>PAYLOAD · </span>
-                            <span style={{ color: "#94a3b8", fontSize: 11, fontFamily: "monospace" }}>{r.payload?.slice(0, 140)}{r.payload?.length > 140 ? "…" : ""}</span>
+                            <span style={{ color: T.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>PAYLOAD SENT · </span>
+                            <span style={{ color: "#94a3b8", fontSize: 11, fontFamily: "monospace" }}>{r.payload}</span>
                           </div>
-                          {r.reason && <div style={{ color: T.muted, fontSize: 12 }}>📋 {r.reason}</div>}
+                          <div style={{ background: "rgba(239,68,68,0.06)", borderLeft: "2px solid #ef4444", borderRadius: "0 7px 7px 0", padding: "8px 12px", marginBottom: 6 }}>
+                            <span style={{ color: T.accent, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>AI ACTUALLY REPLIED · </span>
+                            <span style={{ color: T.text, fontSize: 11, fontFamily: "monospace" }}>{r.ai_response || "(no response captured)"}</span>
+                          </div>
+                          {r.reason && <div style={{ color: T.muted, fontSize: 12 }}>📋 Judge's note: {r.reason}</div>}
                         </>
                       )}
                     </div>
