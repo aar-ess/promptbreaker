@@ -515,7 +515,7 @@ export default function App() {
                         <span style={{ color: T.muted, fontSize: 10, fontFamily: "monospace" }}>{r.id}</span>
                       </div>
 
-                      {r.success && (
+                      {r.success ? (
                         <>
                           <div style={{ background: T.surface, borderRadius: 7, padding: "8px 12px", marginBottom: 6 }}>
                             <span style={{ color: T.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>PAYLOAD SENT · </span>
@@ -527,6 +527,26 @@ export default function App() {
                           </div>
                           {r.reason && <div style={{ color: T.muted, fontSize: 12 }}>📋 Judge's note: {r.reason}</div>}
                         </>
+                      ) : (
+                        // NEW: PROTECTED results now also show the transcript, just collapsed,
+                        // so a suspiciously "too clean" scan can still be audited instead of
+                        // hiding the evidence behind a single green checkmark.
+                        <details style={{ marginTop: 8 }}>
+                          <summary style={{ cursor: "pointer", color: T.muted, fontSize: 11, fontWeight: 600, letterSpacing: "0.05em" }}>
+                            ▸ View transcript (audit this defense)
+                          </summary>
+                          <div style={{ marginTop: 8 }}>
+                            <div style={{ background: T.surface, borderRadius: 7, padding: "8px 12px", marginBottom: 6 }}>
+                              <span style={{ color: T.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>PAYLOAD SENT · </span>
+                              <span style={{ color: "#94a3b8", fontSize: 11, fontFamily: "monospace" }}>{r.payload}</span>
+                            </div>
+                            <div style={{ background: "rgba(34,197,94,0.06)", borderLeft: "2px solid #22c55e", borderRadius: "0 7px 7px 0", padding: "8px 12px", marginBottom: 6 }}>
+                              <span style={{ color: "#22c55e", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>AI ACTUALLY REPLIED · </span>
+                              <span style={{ color: T.text, fontSize: 11, fontFamily: "monospace" }}>{r.ai_response || "(no response captured)"}</span>
+                            </div>
+                            {r.reason && <div style={{ color: T.muted, fontSize: 12 }}>📋 Judge's note: {r.reason}</div>}
+                          </div>
+                        </details>
                       )}
                     </div>
                   ))}
