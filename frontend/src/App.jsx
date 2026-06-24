@@ -216,6 +216,16 @@ function ReportDocument({ results, score, target }) {
 export default function App() {
   const [tab, setTab] = useState("Scanner");
   const [target, setTarget] = useState({ description: "", model: "llama3-8b-8192" });
+  // NEW: bring-your-own-target state. mode "builtin" keeps the original simulated
+  // persona scan; mode "external" attacks a real URL the user provides.
+  const [targetMode, setTargetMode] = useState("builtin");
+  const [externalConfig, setExternalConfig] = useState({
+    url: "",
+    apiKey: "",
+    format: "auto",
+    customTemplate: ""
+  });
+  const [configError, setConfigError] = useState("");
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
@@ -230,6 +240,19 @@ export default function App() {
   }, []);
 
   const runScan = async () => {
+    // Pre-flight check for external mode — fail fast with one clear message
+    // instead of firing 15 attacks at a broken config and getting 15 confusing errors.
+    if (targetMode === "external") {
+      if (!externalConfig.url.trim()) {
+        setConfigError("Target URL is required.");
+        return;
+      }
+      if (externalConfig.format === "custom" && !externalConfig.customTemplate.includes("{{PAYLOAD}}")) {
+        setConfigError("Custom template must include a {{PAYLOAD}} placeholder.");
+        return;
+      }
+    }
+    setConfigError("");
     setScanning(true); setProgress(0); setResults([]); setScore(null);
     try {
       setProgressMsg("Loading attack modules…"); setProgress(10);
@@ -246,12 +269,27 @@ export default function App() {
         setProgress(20 + (i / allAttacks.length) * 60);
         setProgressMsg(`Testing ${allAttacks[i].id} — ${allAttacks[i].name}…`);
         try {
-          // FIX: target_description is now actually sent, so the box you type into
-          // ("bank chatbot", "medical assistant", etc.) really changes what's attacked.
-          const { data: targetData } = await axios.post(`${API}/api/dummy_target`, {
-            payload: allAttacks[i].payload,
-            target_description: persona
-          });
+          let targetData;
+          if (targetMode === "external") {
+            // NEW: attack the real URL the user configured, instead of the
+            // built-in simulated persona.
+            const { data } = await axios.post(`${API}/api/external_target`, {
+              url: externalConfig.url.trim(),
+              api_key: externalConfig.apiKey.trim(),
+              format: externalConfig.format,
+              custom_template: externalConfig.customTemplate,
+              payload: allAttacks[i].payload
+            });
+            targetData = data;
+          } else {
+            // FIX: target_description is now actually sent, so the box you type into
+            // ("bank chatbot", "medical assistant", etc.) really changes what's attacked.
+            const { data } = await axios.post(`${API}/api/dummy_target`, {
+              payload: allAttacks[i].payload,
+              target_description: persona
+            });
+            targetData = data;
+          }
           const { data: analysisResult } = await axios.post(`${API}/api/analyze`, {
             payload: allAttacks[i].payload,
             response: targetData.response
@@ -291,7 +329,7 @@ export default function App() {
 
   const downloadLatex = async () => {
     try {
-      const reportText = `TARGET SYSTEM : ${target.description}\nFINAL SCORE   : ${score?.score}/100\nRISK GRADE    : ${score?.grade}`;
+      const reportText = `TARGET SYSTEM : ${targetLabel}\nFINAL SCORE   : ${score?.score}/100\nRISK GRADE    : ${score?.grade}`;
       const { data } = await axios.post(`${API}/api/export_latex`, { report: reportText });
       const blob = new Blob([data.latex], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
@@ -317,6 +355,12 @@ export default function App() {
   };
 
   const gradeColor = { A: "#22c55e", B: "#84cc16", C: "#eab308", D: "#f97316", F: "#ef4444" };
+
+  // Derived label so the report/header show the right thing regardless of mode —
+  // the simulated persona description, or the real URL that was actually attacked.
+  const targetLabel = targetMode === "external"
+    ? (externalConfig.url || "external target")
+    : (target.description || "simulated target");
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'Inter', system-ui, sans-serif", width: "100%", overflowX: "hidden" }}>
@@ -382,28 +426,124 @@ export default function App() {
 
             {/* Input card */}
             <div style={{ background: T.surfaceAlt, border: `1px solid ${T.borderBright}`, borderRadius: 14, padding: 28, marginBottom: 24 }}>
-              <label style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: "0.15em", color: T.muted, marginBottom: 10 }}>TARGET DESCRIPTION</label>
-              <div style={{ display: "flex", gap: 12 }}>
-                <input
-                  style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`, color: T.text, borderRadius: 9, padding: "12px 16px", fontSize: 14, outline: "none", transition: "border-color 0.2s" }}
-                  placeholder="e.g. Customer support chatbot for a fintech platform"
-                  value={target.description}
-                  onFocus={e => e.target.style.borderColor = T.blue}
-                  onBlur={e => e.target.style.borderColor = T.border}
-                  onChange={e => setTarget({ ...target, description: e.target.value })}
-                />
-                <button
-                  onClick={runScan}
-                  disabled={scanning || !target.description}
-                  style={{
-                    padding: "12px 28px", background: scanning || !target.description ? "#1e293b" : "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
-                    border: "none", color: scanning || !target.description ? T.muted : "white",
-                    borderRadius: 9, fontSize: 14, fontWeight: 800, cursor: scanning || !target.description ? "not-allowed" : "pointer",
-                    whiteSpace: "nowrap", transition: "all 0.2s", letterSpacing: "0.01em"
-                  }}>
-                  {scanning ? "Scanning…" : "Launch Scan"}
-                </button>
+
+              {/* Mode toggle: builtin simulated target vs real external target */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+                {[
+                  { key: "builtin", label: "Simulated Target" },
+                  { key: "external", label: "Real Target (Bring Your Own)" }
+                ].map(m => (
+                  <button key={m.key}
+                    onClick={() => { setTargetMode(m.key); setConfigError(""); }}
+                    style={{
+                      padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                      border: `1px solid ${targetMode === m.key ? T.blue : T.border}`,
+                      background: targetMode === m.key ? T.blueGlow : "transparent",
+                      color: targetMode === m.key ? T.blue : T.muted,
+                      cursor: "pointer", transition: "all 0.2s"
+                    }}>
+                    {m.label}
+                  </button>
+                ))}
               </div>
+
+              {targetMode === "builtin" ? (
+                <>
+                  <label style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: "0.15em", color: T.muted, marginBottom: 10 }}>TARGET DESCRIPTION</label>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <input
+                      style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`, color: T.text, borderRadius: 9, padding: "12px 16px", fontSize: 14, outline: "none", transition: "border-color 0.2s" }}
+                      placeholder="e.g. Customer support chatbot for a fintech platform"
+                      value={target.description}
+                      onFocus={e => e.target.style.borderColor = T.blue}
+                      onBlur={e => e.target.style.borderColor = T.border}
+                      onChange={e => setTarget({ ...target, description: e.target.value })}
+                    />
+                    <button
+                      onClick={runScan}
+                      disabled={scanning || !target.description}
+                      style={{
+                        padding: "12px 28px", background: scanning || !target.description ? "#1e293b" : "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
+                        border: "none", color: scanning || !target.description ? T.muted : "white",
+                        borderRadius: 9, fontSize: 14, fontWeight: 800, cursor: scanning || !target.description ? "not-allowed" : "pointer",
+                        whiteSpace: "nowrap", transition: "all 0.2s", letterSpacing: "0.01em"
+                      }}>
+                      {scanning ? "Scanning…" : "Launch Scan"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: "0.15em", color: T.muted, marginBottom: 10 }}>TARGET ENDPOINT URL</label>
+                  <input
+                    style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, color: T.text, borderRadius: 9, padding: "12px 16px", fontSize: 14, outline: "none", marginBottom: 14, boxSizing: "border-box" }}
+                    placeholder="https://api.example.com/v1/chat/completions"
+                    value={externalConfig.url}
+                    onFocus={e => e.target.style.borderColor = T.blue}
+                    onBlur={e => e.target.style.borderColor = T.border}
+                    onChange={e => setExternalConfig({ ...externalConfig, url: e.target.value })}
+                  />
+
+                  <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: T.muted, marginBottom: 8 }}>API KEY (OPTIONAL)</label>
+                      <input
+                        type="password"
+                        style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, color: T.text, borderRadius: 9, padding: "10px 14px", fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                        placeholder="Bearer token"
+                        value={externalConfig.apiKey}
+                        onChange={e => setExternalConfig({ ...externalConfig, apiKey: e.target.value })}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: T.muted, marginBottom: 8 }}>FORMAT</label>
+                      <select
+                        style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, color: T.text, borderRadius: 9, padding: "10px 14px", fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                        value={externalConfig.format}
+                        onChange={e => setExternalConfig({ ...externalConfig, format: e.target.value })}
+                      >
+                        <option value="auto">Auto-detect</option>
+                        <option value="openai">OpenAI-style</option>
+                        <option value="groq">Groq</option>
+                        <option value="ollama">Ollama</option>
+                        <option value="custom">Custom JSON</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {externalConfig.format === "custom" && (
+                    <div style={{ marginBottom: 14 }}>
+                      <label style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: T.muted, marginBottom: 8 }}>
+                        CUSTOM JSON TEMPLATE — use <code style={{ color: T.accent }}>{"{{PAYLOAD}}"}</code> as the attack placeholder
+                      </label>
+                      <textarea
+                        style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, color: T.text, borderRadius: 9, padding: "10px 14px", fontSize: 12, fontFamily: "monospace", outline: "none", minHeight: 90, boxSizing: "border-box", resize: "vertical" }}
+                        placeholder={'{\n  "input": "{{PAYLOAD}}",\n  "session_id": "test"\n}'}
+                        value={externalConfig.customTemplate}
+                        onChange={e => setExternalConfig({ ...externalConfig, customTemplate: e.target.value })}
+                      />
+                    </div>
+                  )}
+
+                  {configError && (
+                    <div style={{ background: "rgba(239,68,68,0.08)", border: `1px solid ${T.accent}44`, borderRadius: 8, padding: "8px 14px", marginBottom: 14, color: T.accent, fontSize: 12, fontWeight: 600 }}>
+                      ⚠ {configError}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={runScan}
+                    disabled={scanning || !externalConfig.url.trim()}
+                    style={{
+                      width: "100%", padding: "12px 28px", background: scanning || !externalConfig.url.trim() ? "#1e293b" : "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
+                      border: "none", color: scanning || !externalConfig.url.trim() ? T.muted : "white",
+                      borderRadius: 9, fontSize: 14, fontWeight: 800, cursor: scanning || !externalConfig.url.trim() ? "not-allowed" : "pointer",
+                      transition: "all 0.2s", letterSpacing: "0.01em"
+                    }}>
+                    {scanning ? "Attacking real target…" : "Launch Scan Against Real Target"}
+                  </button>
+                </>
+              )}
 
               {/* Progress */}
               {scanning && (
@@ -604,7 +744,7 @@ export default function App() {
                 </div>
                 <div style={{ maxHeight: 700, overflowY: "auto", background: "#e2e8f0", padding: 24 }}>
                   <div style={{ boxShadow: "0 4px 32px rgba(0,0,0,0.25)", borderRadius: 4 }}>
-                    <ReportDocument results={results} score={score} target={target.description} />
+                    <ReportDocument results={results} score={score} target={targetLabel} />
                   </div>
                 </div>
               </div>
